@@ -1,29 +1,28 @@
-// Compiling: g++ demo.cpp -o a.out -lGL -lglut -lGLU
-
 #include <GL/glut.h>
 #include <cmath>  // abs()
 #include <assert.h>
 #include <iterator>
+#include <iostream>
+#include <vector>
 
 using namespace std;
 
+vector<pair<float, float>> controlPoints;
+pair<float,float> dummyVertex(-1,-1);
+pair<float,float> previousControlPoint (dummyVertex);
+bool drawDynamicLine = false;
+bool pressedLeftButton = false;
+
 void BresenhamLineAlgorithm(float x1, float y1, float x2, float y2, float xoffset);
-void MyDrawLine(float xPoints[], float yPoints[]);
 void DrawLineOfSymmetry();
 void DrawWAKE();
+void glLine(float x0, float y0, float x1, float y1, float xoffset);
+void LButtonDown();
+void RButtonDown();
+void MouseMove();
+void MouseFunc(int button, int state, int x, int y);
 
-void MyDrawLine(float xPoints[], float yPoints[]) {
-	//assert(sizeof(xPoints)/sizeof(*xPoints) == sizeof(yPoints)/sizeof(*yPoints));
-
-	float offset = -1;
-
-	// Assumes that the size of xPoints = size of yPoints
-	for (int i = 0; i <= 3; i++) {
-		BresenhamLineAlgorithm(xPoints[i], yPoints[i], xPoints[i+1], yPoints[i+1], offset);
-	}
-}
-
-void GLLine(float x0, float y0, float x1, float y1, float xoffset) {
+void glLine(float x0, float y0, float x1, float y1, float xoffset) {
 	glColor3f(1.0f, 1.0f, 1.0f);
 	glBegin(GL_LINES);
 		glVertex2f((x0 * 0.01) + xoffset, y0 * 0.01);
@@ -82,10 +81,10 @@ void DrawWAKE() {
 	BresenhamLineAlgorithm(10, -5, 15, -10, lhsStart);
 	BresenhamLineAlgorithm(15, -10, 20, 0, lhsStart);
 
-	GLLine(0, 0, 5, -10, rhsStart);
-	GLLine(5, -10, 10, -5, rhsStart);
-	GLLine(10, -5, 15, -10, rhsStart);
-	GLLine(15, -10, 20, 0, rhsStart);
+	glLine(0, 0, 5, -10, rhsStart);
+	glLine(5, -10, 10, -5, rhsStart);
+	glLine(10, -5, 15, -10, rhsStart);
+	glLine(15, -10, 20, 0, rhsStart);
 
 	xOffset = 25;
 
@@ -94,9 +93,9 @@ void DrawWAKE() {
 	BresenhamLineAlgorithm(xOffset + 5, 0, xOffset + 10, -10, lhsStart);
 	BresenhamLineAlgorithm(xOffset + 2.5, -5, xOffset + 7.5, -5, lhsStart);
 
-	GLLine(xOffset, -10, xOffset + 5, 0, rhsStart);
-	GLLine(xOffset + 5, 0, xOffset + 10, -10, rhsStart);
-	GLLine(xOffset + 2.5, -5, xOffset + 7.5, -5, rhsStart);
+	glLine(xOffset, -10, xOffset + 5, 0, rhsStart);
+	glLine(xOffset + 5, 0, xOffset + 10, -10, rhsStart);
+	glLine(xOffset + 2.5, -5, xOffset + 7.5, -5, rhsStart);
 
 
 	xOffset += 15;
@@ -106,9 +105,9 @@ void DrawWAKE() {
 	BresenhamLineAlgorithm(xOffset, -5, xOffset + 5, 0, lhsStart);
 	BresenhamLineAlgorithm(xOffset, -5, xOffset + 5, -10, lhsStart);
 
-	GLLine(xOffset, 0, xOffset, -10, rhsStart);
-	GLLine(xOffset, -5, xOffset + 5, 0, rhsStart);
-	GLLine(xOffset, -5, xOffset + 5, -10, rhsStart);
+	glLine(xOffset, 0, xOffset, -10, rhsStart);
+	glLine(xOffset, -5, xOffset + 5, 0, rhsStart);
+	glLine(xOffset, -5, xOffset + 5, -10, rhsStart);
 
 	xOffset += 10;
 
@@ -118,27 +117,100 @@ void DrawWAKE() {
 	BresenhamLineAlgorithm(xOffset, -5, xOffset + 2, -5, lhsStart);
 	BresenhamLineAlgorithm(xOffset, -10, xOffset + 5, -10, lhsStart);
 
-	GLLine(xOffset, 0, xOffset, -10, rhsStart);
-	GLLine(xOffset, 0, xOffset + 5, 0, rhsStart);
-	GLLine(xOffset, -5, xOffset + 2, -5, rhsStart);
-	GLLine(xOffset, -10, xOffset + 5, -10, rhsStart);
+	glLine(xOffset, 0, xOffset, -10, rhsStart);
+	glLine(xOffset, 0, xOffset + 5, 0, rhsStart);
+	glLine(xOffset, -5, xOffset + 2, -5, rhsStart);
+	glLine(xOffset, -10, xOffset + 5, -10, rhsStart);
+}
+
+void mouseFunc(int button, int state, int x, int y) {
+	if (button == GLUT_LEFT_BUTTON) {
+		if (state == GLUT_DOWN) {
+			previousControlPoint = make_pair<float,float>(x,y);
+			controlPoints.push_back(previousControlPoint);	// Add a vertex to control points list
+			drawDynamicLine = true;
+			pressedLeftButton = true;
+		}
+	}
+	else if (button == GLUT_RIGHT_BUTTON) {
+		if (state == GLUT_DOWN) {
+			// Check if we have pressed left mouse button down at least once
+			if (pressedLeftButton) {
+				controlPoints.push_back(make_pair<float,float>(x,y)); // Add final vertex for this line-segment to vector
+				controlPoints.push_back(dummyVertex);	// Add dummyVertex (-1,-1) to indicate end of line segment in our vector
+
+				// Reset some global variable values
+				previousControlPoint = dummyVertex;
+				drawDynamicLine = false;
+				pressedLeftButton = false;
+			}
+		}
+	}
+}
+
+void passiveMotionFunc(int x, int y) {
+	if (drawDynamicLine) {
+		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    	glClear(GL_COLOR_BUFFER_BIT);
+
+		DrawWAKE();	// Redraw WAKE on lhs using BresenhamLineAlgorithm and on rhs using GL_LINES
+
+		glPushMatrix();
+		glLoadIdentity();
+
+		glMatrixMode(GL_PROJECTION);
+		gluOrtho2D(0.0, glutGet(GLUT_WINDOW_WIDTH), glutGet(GLUT_WINDOW_HEIGHT), 0.0);	// set coordinate system to match window size
+
+		// For every 2 vertexes/elements in controlPoints, draw a line
+		for (unsigned int i = 0; i < controlPoints.size()-1; i++) {
+			// If the current vertex or the next vertex in controlPoints has an x-coordinate = -1, skip it
+			// In other words, this if-statement indicates the end of a line in our 'controlPoints' vector
+			if (controlPoints.at(i).first == -1 || controlPoints.at(i+1).first == -1) {
+				continue;
+			}
+			glBegin(GL_LINES);
+				glVertex2f(controlPoints.at(i).first, controlPoints.at(i).second);
+				glVertex2f(controlPoints.at(i+1).first, controlPoints.at(i+1).second);
+			glEnd();
+		}
+		// Now draw the dynamic line with mouse cursor position as the end vertex
+		glBegin(GL_LINES);
+			glVertex2f(previousControlPoint.first, previousControlPoint.second);
+			glVertex2f(x, y);
+		glEnd();
+
+		glPopMatrix();
+		glLoadIdentity();
+
+		glFlush();
+	}
+}
+
+void LButtonDown() {
+	;
+}
+
+void RButtonDown() {
+	;
 }
 
 void display() {
-    // First - set background color to black
-    // Second - Clear color buffer for later usage
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
-	DrawWAKE();	// Draw WAKE on lhs using BresenhamLineAlgorithm and on rhs using GL_LINES
-	glFlush(); // Render now
-}
 
+
+	DrawWAKE();	// Draw WAKE on lhs using BresenhamLineAlgorithm and on rhs using GL_LINES
+	glutMouseFunc(mouseFunc);
+	glutPassiveMotionFunc(passiveMotionFunc);
+
+	glFlush();	// Render now
+}
 
 int main(int argc, char** argv) {
     glutInit(&argc, argv);
     glutCreateWindow("Hello CS460/560");
     glutInitWindowSize(500, 500);
-	glutReshapeWindow(200, 200);
+	glutReshapeWindow(500, 500);
     glutInitWindowPosition(200,200);
     glutDisplayFunc(display);
 	glutMainLoop();	// Enter event processing loop
